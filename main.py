@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="Flight WPM Ranking", layout="wide")
+st.set_page_config(page_title="Flight Ranking App", layout="wide")
 
 st.title("✈️ Flight Ranking App")
 st.markdown("This app uses the **Weighted Product Model (WPM)** to rank flight options based on your preferences.")
 
-# --- Sidebar Section ---
 with st.sidebar:
     st.header("📂 Upload Your Flight CSV")
     uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
@@ -39,11 +38,9 @@ with st.sidebar:
     for slot in dep_slots:
         arr_time_map[slot] = st.slider(f"{slot}", 1, 5, 3, key=f"arr_{slot}")
 
-# --- Main Content ---
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
 
-    # --- Map Categorical Data ---
     stops_map = {'zero': 0, 'one': 1, 'two_or_more': 2}
     df['stops_mapped'] = df['stops'].map(stops_map)
 
@@ -53,14 +50,12 @@ if uploaded_file is not None:
     df['dep_time_score'] = df['departure_time'].map(dep_time_map)
     df['arr_time_score'] = df['arrival_time'].map(arr_time_map)
 
-    # --- Normalize Weights ---
     weights = np.array([
         weight_price, weight_duration, weight_days_left,
         weight_stops, weight_class, weight_dep_time, weight_arr_time
     ])
     weights = weights / weights.sum()
 
-    # --- Decision Matrix ---
     decision_matrix = pd.DataFrame({
         "price": df["price"],
         "duration": df["duration"],
@@ -71,7 +66,6 @@ if uploaded_file is not None:
         "arr_time": df["arr_time_score"]
     })
 
-    # --- Normalize (WPM style) ---
     cost_indices = [0, 1, 2, 3]
     benefit_indices = [4, 5, 6]
 
@@ -82,19 +76,36 @@ if uploaded_file is not None:
         else:
             norm_matrix[col] = norm_matrix[col] / norm_matrix[col].max()
 
-    # --- Compute WPM Scores ---
     product_scores = np.prod(norm_matrix ** weights, axis=1)
     df["WPM Score"] = product_scores
     df["Rank"] = df["WPM Score"].rank(ascending=False).astype(int)
 
-    df_sorted = df.sort_values("WPM Score", ascending=False)
+    df_sorted = df.sort_values("WPM Score", ascending=False).reset_index(drop=True)
 
-    # --- Show Results ---
-    st.subheader("📊 Ranked Flights Based on Your Preferences")
+    st.markdown("### 🏆 Top 5 Flight Options")
+    top5 = df_sorted.head(5).copy()
+
+    def format_flight(row):
+        return (
+            f"**✈️ {row['airline']} - {row['flight']}**\n"
+            f"- Class: {row['class']}\n"
+            f"- Price: ₹{row['price']}\n"
+            f"- Duration: {row['duration']} hrs\n"
+            f"- Days Left: {row['days_left']}\n"
+            f"- Dep: {row['departure_time']} → Arr: {row['arrival_time']}\n"
+            f"- Rank: {row['Rank']} | Score: {round(row['WPM Score'], 4)}"
+        )
+
+    cols = st.columns(5)
+    for i in range(min(5, len(top5))):
+        with cols[i]:
+            st.markdown(format_flight(top5.iloc[i]))
+
+    st.markdown("### 📄 All Ranked Flights")
     st.dataframe(df_sorted[[
         "Rank", "airline", "flight", "departure_time", "arrival_time",
         "class", "duration", "days_left", "price", "WPM Score"
-    ]].reset_index(drop=True), use_container_width=True)
+    ]], use_container_width=True)
 
 else:
-    st.warning("Please upload a valid flight CSV file to start.")
+    st.warning("⚠️ Please upload a valid flight CSV file to start.")
