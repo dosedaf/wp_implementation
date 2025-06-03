@@ -2,110 +2,126 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="Flight Ranking App", layout="wide")
+st.set_page_config(page_title="Aplikasi Pemeringkat Penerbangan", layout="wide")
 
-st.title("✈️ Flight Ranking App")
-st.markdown("This app uses the **Weighted Product Model (WPM)** to rank flight options based on your preferences.")
+st.title("✈️ Aplikasi Pemeringkat Penerbangan")
+st.markdown("""
+Aplikasi ini menggunakan metode **Weighted Product Model (WPM)** untuk memberikan peringkat pada opsi penerbangan berdasarkan preferensi Anda.
+
+**Langkah-langkah**:
+1. Tentukan bobot kriteria yang Anda anggap penting.
+2. Atur preferensi waktu keberangkatan dan kedatangan.
+3. Lihat hasil peringkat dan pilih opsi terbaik.
+""")
+
+try:
+    df = pd.read_csv("flights.csv")
+except FileNotFoundError:
+    st.error("❌ File `flights.csv` tidak ditemukan. Pastikan file tersebut ada di folder yang sama.")
+    st.stop()
 
 with st.sidebar:
-    st.header("📂 Upload Your Flight CSV")
-    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+    st.header("⚙️ Pengaturan Preferensi")
 
-    st.markdown("---")
-    st.header("🧮 Set Weights (Importance)")
-    st.caption("Higher weight → more influence in ranking. All weights are normalized.")
+    with st.expander("🎯 Bobot Kriteria"):
+        st.markdown("Tentukan seberapa penting setiap kriteria. Total bobot akan dinormalisasi.")
+        weight_price = st.slider("💰 Harga (semakin murah semakin baik)", 0.0, 1.0, 0.2)
+        weight_duration = st.slider("🕒 Durasi Penerbangan (semakin singkat semakin baik)", 0.0, 1.0, 0.2)
+        weight_days_left = st.slider("📅 Sisa Hari Menuju Keberangkatan (semakin cepat semakin baik)", 0.0, 1.0, 0.2)
+        weight_stops = st.slider("🛑 Jumlah Transit (semakin sedikit semakin baik)", 0.0, 1.0, 0.1)
+        weight_class = st.slider("💼 Kelas Penerbangan (lebih baik jika Business)", 0.0, 1.0, 0.1)
+        weight_dep_time = st.slider("🕓 Waktu Keberangkatan (sesuai preferensi Anda)", 0.0, 1.0, 0.1)
+        weight_arr_time = st.slider("🕙 Waktu Kedatangan (sesuai preferensi Anda)", 0.0, 1.0, 0.1)
 
-    weight_price = st.slider("💰 Price (prefer cheaper)", 0.0, 1.0, 0.2)
-    weight_duration = st.slider("🕒 Duration (prefer shorter)", 0.0, 1.0, 0.2)
-    weight_days_left = st.slider("📅 Days Left (prefer sooner)", 0.0, 1.0, 0.2)
-    weight_stops = st.slider("🛑 Stops (prefer fewer)", 0.0, 1.0, 0.1)
-    weight_class = st.slider("💼 Class (prefer Business)", 0.0, 1.0, 0.1)
-    weight_dep_time = st.slider("🕓 Departure Time", 0.0, 1.0, 0.1)
-    weight_arr_time = st.slider("🕙 Arrival Time", 0.0, 1.0, 0.1)
+    with st.expander("🕓 Preferensi Waktu Keberangkatan"):
+        st.markdown("Berikan skor 1–5 pada tiap slot waktu. Semakin tinggi, semakin disukai.")
+        dep_slots = ['Early_Morning', 'Morning', 'Afternoon', 'Evening', 'Night']
+        dep_time_map = {}
+        for slot in dep_slots:
+            dep_time_map[slot] = st.slider(f"{slot}", 1, 5, 3, key=f"dep_{slot}")
 
-    st.markdown("---")
-    st.header("🕑 Time Preferences")
-    st.caption("Assign preference scores (1–5) to time slots. Higher = better.")
+    with st.expander("🕘 Preferensi Waktu Kedatangan"):
+        st.markdown("Berikan skor 1–5 pada tiap slot waktu. Semakin tinggi, semakin disukai.")
+        arr_time_map = {}
+        for slot in dep_slots:
+            arr_time_map[slot] = st.slider(f"{slot}", 1, 5, 3, key=f"arr_{slot}")
 
-    st.markdown("**Departure Time Preferences**")
-    dep_slots = ['Early_Morning', 'Morning', 'Afternoon', 'Evening', 'Night']
-    dep_time_map = {}
-    for slot in dep_slots:
-        dep_time_map[slot] = st.slider(f"{slot}", 1, 5, 3, key=f"dep_{slot}")
+stops_map = {'zero': 0, 'one': 1, 'two_or_more': 2}
+df['stops_mapped'] = df['stops'].map(stops_map)
 
-    st.markdown("**Arrival Time Preferences**")
-    arr_time_map = {}
-    for slot in dep_slots:
-        arr_time_map[slot] = st.slider(f"{slot}", 1, 5, 3, key=f"arr_{slot}")
+class_map = {'Economy': 0, 'Business': 1}
+df['class_mapped'] = df['class'].map(class_map)
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
+df['dep_time_score'] = df['departure_time'].map(dep_time_map)
+df['arr_time_score'] = df['arrival_time'].map(arr_time_map)
 
-    stops_map = {'zero': 0, 'one': 1, 'two_or_more': 2}
-    df['stops_mapped'] = df['stops'].map(stops_map)
+weights = np.array([
+    weight_price, weight_duration, weight_days_left,
+    weight_stops, weight_class, weight_dep_time, weight_arr_time
+])
+if weights.sum() == 0:
+    st.error("⚠️ Bobot tidak boleh semuanya 0.")
+    st.stop()
+weights = weights / weights.sum()
 
-    class_map = {'Economy': 0, 'Business': 1}
-    df['class_mapped'] = df['class'].map(class_map)
+decision_matrix = pd.DataFrame({
+    "price": df["price"],
+    "duration": df["duration"],
+    "days_left": df["days_left"],
+    "stops": df["stops_mapped"],
+    "class": df["class_mapped"],
+    "dep_time": df["dep_time_score"],
+    "arr_time": df["arr_time_score"]
+})
 
-    df['dep_time_score'] = df['departure_time'].map(dep_time_map)
-    df['arr_time_score'] = df['arrival_time'].map(arr_time_map)
+cost_indices = [0, 1, 2, 3]
+benefit_indices = [4, 5, 6]
 
-    weights = np.array([
-        weight_price, weight_duration, weight_days_left,
-        weight_stops, weight_class, weight_dep_time, weight_arr_time
-    ])
-    weights = weights / weights.sum()
+norm_matrix = decision_matrix.copy()
+for i, col in enumerate(norm_matrix.columns):
+    if (norm_matrix[col] == 0).any():
+        norm_matrix[col] += 1e-6
+    if i in cost_indices:
+        norm_matrix[col] = norm_matrix[col].min() / norm_matrix[col]
+    else:
+        norm_matrix[col] = norm_matrix[col] / norm_matrix[col].max()
 
-    decision_matrix = pd.DataFrame({
-        "price": df["price"],
-        "duration": df["duration"],
-        "days_left": df["days_left"],
-        "stops": df["stops_mapped"],
-        "class": df["class_mapped"],
-        "dep_time": df["dep_time_score"],
-        "arr_time": df["arr_time_score"]
-    })
+product_scores = np.prod(norm_matrix ** weights, axis=1)
+df["Skor WPM"] = product_scores
+df["Peringkat"] = df["Skor WPM"].rank(ascending=False).astype(int)
 
-    cost_indices = [0, 1, 2, 3]
-    benefit_indices = [4, 5, 6]
+df_sorted = df.sort_values("Skor WPM", ascending=False).reset_index(drop=True)
 
-    norm_matrix = decision_matrix.copy()
-    for i, col in enumerate(norm_matrix.columns):
-        if i in cost_indices:
-            norm_matrix[col] = norm_matrix[col].min() / norm_matrix[col]
-        else:
-            norm_matrix[col] = norm_matrix[col] / norm_matrix[col].max()
+st.markdown("### 🏆 5 Opsi Penerbangan Terbaik")
+top5 = df_sorted.head(5).copy()
 
-    product_scores = np.prod(norm_matrix ** weights, axis=1)
-    df["WPM Score"] = product_scores
-    df["Rank"] = df["WPM Score"].rank(ascending=False).astype(int)
+def format_flight(row):
+    return (
+        f"### ✈️ {row['airline']} - {row['flight']}\n"
+        f"- Kelas: {row['class']}\n"
+        f"- Harga: ₹{row['price']:,}\n"
+        f"- Durasi: {row['duration']} jam\n"
+        f"- Sisa Hari: {row['days_left']}\n"
+        f"- Berangkat: {row['departure_time']} → Tiba: {row['arrival_time']}\n"
+        f"- Peringkat: {row['Peringkat']} | Skor: {round(row['Skor WPM'], 4)}"
+    )
 
-    df_sorted = df.sort_values("WPM Score", ascending=False).reset_index(drop=True)
+cols = st.columns(5)
+for i in range(min(5, len(top5))):
+    with cols[i]:
+        st.markdown(format_flight(top5.iloc[i]))
 
-    st.markdown("### 🏆 Top 5 Flight Options")
-    top5 = df_sorted.head(5).copy()
-
-    def format_flight(row):
-        return (
-            f"**✈️ {row['airline']} - {row['flight']}**\n"
-            f"- Class: {row['class']}\n"
-            f"- Price: ₹{row['price']}\n"
-            f"- Duration: {row['duration']} hrs\n"
-            f"- Days Left: {row['days_left']}\n"
-            f"- Dep: {row['departure_time']} → Arr: {row['arrival_time']}\n"
-            f"- Rank: {row['Rank']} | Score: {round(row['WPM Score'], 4)}"
-        )
-
-    cols = st.columns(5)
-    for i in range(min(5, len(top5))):
-        with cols[i]:
-            st.markdown(format_flight(top5.iloc[i]))
-
-    st.markdown("### 📄 All Ranked Flights")
+with st.expander("📋 Lihat Semua Opsi Penerbangan Terurut"):
+    st.markdown("Berikut adalah daftar lengkap semua penerbangan dengan skor dan peringkat:")
     st.dataframe(df_sorted[[
-        "Rank", "airline", "flight", "departure_time", "arrival_time",
-        "class", "duration", "days_left", "price", "WPM Score"
+        "Peringkat", "airline", "flight", "departure_time", "arrival_time",
+        "class", "duration", "days_left", "price", "Skor WPM"
     ]], use_container_width=True)
 
-else:
-    st.warning("⚠️ Please upload a valid flight CSV file to start.")
+csv_download = df_sorted.to_csv(index=False)
+st.download_button(
+    label="📥 Unduh Hasil Peringkat (.csv)",
+    data=csv_download,
+    file_name="peringkat_penerbangan.csv",
+    mime="text/csv"
+)
