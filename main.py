@@ -97,7 +97,7 @@ top5 = df_sorted.head(5).copy()
 
 def format_flight(row):
     return (
-        f"### ✈️ {row['airline']} - {row['flight']}\n"
+        f"#### ✈️ {row['airline']} - {row['flight']}\n"
         f"- Kelas: {row['class']}\n"
         f"- Harga: ₹{row['price']:,}\n"
         f"- Durasi: {row['duration']} jam\n"
