@@ -102,9 +102,11 @@ def format_flight(row):
         f"- Harga: ₹{row['price']:,}\n"
         f"- Durasi: {row['duration']} jam\n"
         f"- Sisa Hari: {row['days_left']}\n"
+        f"- Transit: {row['stops_mapped']}\n"
         f"- Berangkat: {row['departure_time']} → Tiba: {row['arrival_time']}\n"
         f"- Peringkat: {row['Peringkat']} | Skor: {round(row['Skor WPM'], 4)}"
     )
+
 
 cols = st.columns(5)
 for i in range(min(5, len(top5))):
@@ -115,8 +117,8 @@ with st.expander("📋 Lihat Semua Opsi Penerbangan Terurut"):
     st.markdown("Berikut adalah daftar lengkap semua penerbangan dengan skor dan peringkat:")
     st.dataframe(df_sorted[[
         "Peringkat", "airline", "flight", "departure_time", "arrival_time",
-        "class", "duration", "days_left", "price", "Skor WPM"
-    ]], use_container_width=True)
+        "stops_mapped", "class", "duration", "days_left", "price", "Skor WPM"
+    ]].rename(columns={"stops_mapped": "stops"}), use_container_width=True)
 
 csv_download = df_sorted.to_csv(index=False)
 st.download_button(
