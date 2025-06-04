@@ -91,9 +91,7 @@ for i, col in enumerate(wpm_matrix.columns):
         wpm_matrix[col] = wpm_matrix[col] ** (weights[i])
 
 df["Skor WPM"] = wpm_matrix.prod(axis=1)
-
 df["Peringkat"] = df["Skor WPM"].rank(ascending=False).astype(int)
-
 df_sorted = df.sort_values("Skor WPM", ascending=False).reset_index(drop=True)
 
 st.markdown("### 🏆 5 Opsi Penerbangan Terbaik")
@@ -110,7 +108,6 @@ def format_flight(row):
         f"- Berangkat: {row['departure_time']} → Tiba: {row['arrival_time']}\n"
         f"- Peringkat: {row['Peringkat']} | Skor: {round(row['Skor WPM'], 4)}"
     )
-
 
 cols = st.columns(5)
 for i in range(min(5, len(top5))):
