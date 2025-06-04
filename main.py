@@ -59,10 +59,15 @@ weights = np.array([
     weight_price, weight_duration, weight_days_left,
     weight_stops, weight_class, weight_dep_time, weight_arr_time
 ])
+
 if weights.sum() == 0:
     st.error("⚠️ Bobot tidak boleh semuanya 0.")
     st.stop()
-weights = weights / weights.sum()
+
+weights = weights / weights.sum()  
+
+cost_indices = [0, 1, 2, 3]    
+benefit_indices = [4, 5, 6]   
 
 decision_matrix = pd.DataFrame({
     "price": df["price"],
@@ -74,20 +79,19 @@ decision_matrix = pd.DataFrame({
     "arr_time": df["arr_time_score"]
 })
 
-cost_indices = [0, 1, 2, 3]
-benefit_indices = [4, 5, 6]
+epsilon = 1e-6
+decision_matrix = decision_matrix.replace(0, epsilon)
 
-norm_matrix = decision_matrix.copy()
-for i, col in enumerate(norm_matrix.columns):
-    if (norm_matrix[col] == 0).any():
-        norm_matrix[col] += 1e-6
+wpm_matrix = decision_matrix.copy()
+
+for i, col in enumerate(wpm_matrix.columns):
     if i in cost_indices:
-        norm_matrix[col] = norm_matrix[col].min() / norm_matrix[col]
+        wpm_matrix[col] = wpm_matrix[col] ** (-weights[i])
     else:
-        norm_matrix[col] = norm_matrix[col] / norm_matrix[col].max()
+        wpm_matrix[col] = wpm_matrix[col] ** (weights[i])
 
-product_scores = np.prod(norm_matrix ** weights, axis=1)
-df["Skor WPM"] = product_scores
+df["Skor WPM"] = wpm_matrix.prod(axis=1)
+
 df["Peringkat"] = df["Skor WPM"].rank(ascending=False).astype(int)
 
 df_sorted = df.sort_values("Skor WPM", ascending=False).reset_index(drop=True)
